@@ -1,0 +1,10 @@
+{
+  "name": "personal-lang-coach",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/serve.mjs",
+    "test": "node tests/analyzer.test.mjs"
+  }
+}

@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Pronunciation assessment for 15 to 45 second English audio uploads.">
+    <title>Personal Lang Coach</title>
+    <link rel="stylesheet" href="/src/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="workspace" aria-labelledby="app-title">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">English pronunciation assessment</p>
+            <h1 id="app-title">Personal Lang Coach</h1>
+          </div>
+          <div class="status-pill" id="privacy-status">Local audio processing</div>
+        </header>
+
+        <section class="panel input-panel" aria-labelledby="upload-title">
+          <div class="section-head">
+            <div>
+              <h2 id="upload-title">Recording</h2>
+              <p>Upload one English speech file between 15 and 45 seconds.</p>
+            </div>
+            <span id="duration-badge" class="badge muted">No file</span>
+          </div>
+
+          <label class="dropzone" id="dropzone">
+            <input id="audio-file" type="file" accept="audio/*">
+            <span class="drop-title">Choose audio file</span>
+            <span class="drop-copy">MP3, WAV, M4A, OGG, or WEBM</span>
+          </label>
+
+          <div class="field">
+            <label for="transcript">Expected transcript <span>optional</span></label>
+            <textarea id="transcript" rows="4" spellcheck="true" placeholder="Paste the passage the learner intended to read for word-level feedback."></textarea>
+          </div>
+
+          <label class="consent-row">
+            <input id="consent" type="checkbox">
+            <span>I consent to this browser processing my audio for pronunciation feedback. The file is not uploaded by this app.</span>
+          </label>
+
+          <div class="actions">
+            <button id="analyze" class="primary" type="button" disabled>Analyze pronunciation</button>
+            <button id="reset" class="secondary" type="button">Reset</button>
+          </div>
+          <p class="error" id="error" role="alert"></p>
+        </section>
+
+        <section class="panel results-panel" aria-labelledby="results-title">
+          <div class="section-head">
+            <div>
+              <h2 id="results-title">Assessment</h2>
+              <p id="result-summary">Results appear after analysis.</p>
+            </div>
+            <output id="score" class="score" aria-label="Pronunciation score">--</output>
+          </div>
+
+          <div class="meter-grid" aria-label="Component scores">
+            <div class="meter">
+              <span>Clarity</span>
+              <div><i id="clarity-bar"></i></div>
+              <strong id="clarity-score">--</strong>
+            </div>
+            <div class="meter">
+              <span>Rhythm</span>
+              <div><i id="rhythm-bar"></i></div>
+              <strong id="rhythm-score">--</strong>
+            </div>
+            <div class="meter">
+              <span>Pace</span>
+              <div><i id="pace-bar"></i></div>
+              <strong id="pace-score">--</strong>
+            </div>
+          </div>
+
+          <div class="visualizer">
+            <canvas id="waveform" width="980" height="220" aria-label="Audio waveform with issue highlights"></canvas>
+          </div>
+
+          <div id="word-feedback" class="word-feedback" aria-live="polite"></div>
+          <div id="issue-list" class="issue-list"></div>
+        </section>
+      </section>
+
+      <aside class="privacy-panel" aria-labelledby="privacy-title">
+        <h2 id="privacy-title">Data handling</h2>
+        <dl>
+          <div>
+            <dt>Storage</dt>
+            <dd>Audio stays in browser memory and is cleared on reset or refresh.</dd>
+          </div>
+          <div>
+            <dt>Retention</dt>
+            <dd>No server-side retention in the default deployment.</dd>
+          </div>
+          <div>
+            <dt>Deletion</dt>
+            <dd>Reset revokes the local object URL and clears analysis state.</dd>
+          </div>
+          <div>
+            <dt>Scope</dt>
+            <dd>English speech only. Files outside 15-45 seconds are rejected.</dd>
+          </div>
+        </dl>
+      </aside>
+    </main>
+
+    <script type="module" src="/src/app.js"></script>
+  </body>
+</html>
