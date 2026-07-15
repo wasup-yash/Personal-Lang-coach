@@ -32,6 +32,29 @@ textarea {
   font: inherit;
 }
 
+select {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 12px;
+  color: var(--ink);
+  background: #fbfcfb;
+  font: inherit;
+}
+
+select:focus {
+  outline: 3px solid rgba(35, 89, 91, 0.25);
+  outline-offset: 2px;
+}
+
+.field-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
 .shell {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 300px;
@@ -420,6 +443,34 @@ canvas {
   margin-bottom: 0;
   color: var(--teal-dark);
   font-weight: 720;
+}
+
+.ai-coaching {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid #bfd7d8;
+  border-radius: 8px;
+  background: #eef7f6;
+}
+
+.ai-coaching h3 {
+  margin-bottom: 8px;
+  color: var(--teal-dark);
+}
+
+.ai-coaching p {
+  margin: 0;
+  color: #394541;
+  line-height: 1.45;
+}
+
+.ai-coaching ul {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0 0;
+  padding-left: 20px;
+  color: #394541;
+  line-height: 1.4;
 }
 
 .privacy-panel {

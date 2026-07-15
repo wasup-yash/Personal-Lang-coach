@@ -1,4 +1,5 @@
 import { analyzePronunciation, validateDuration } from "./analyzer.js";
+import { COACH_MODELS, createCoachRequest, requestAICoaching } from "./ai-coach.js";
 
 const state = {
   file: null,
@@ -11,6 +12,10 @@ const elements = {
   file: document.querySelector("#audio-file"),
   dropzone: document.querySelector("#dropzone"),
   transcript: document.querySelector("#transcript"),
+  coachModel: document.querySelector("#coach-model"),
+  modelConsent: document.querySelector("#model-consent"),
+  modelConsentRow: document.querySelector("#model-consent-row"),
+  modelNotice: document.querySelector("#model-notice"),
   consent: document.querySelector("#consent"),
   analyze: document.querySelector("#analyze"),
   reset: document.querySelector("#reset"),
@@ -26,7 +31,11 @@ const elements = {
   paceScore: document.querySelector("#pace-score"),
   canvas: document.querySelector("#waveform"),
   words: document.querySelector("#word-feedback"),
-  issues: document.querySelector("#issue-list")
+  issues: document.querySelector("#issue-list"),
+  aiCoaching: document.querySelector("#ai-coaching"),
+  aiCoachingTitle: document.querySelector("#ai-coaching-title"),
+  aiCoachingSummary: document.querySelector("#ai-coaching-summary"),
+  aiCoachingPractice: document.querySelector("#ai-coaching-practice")
 };
 
 elements.file.addEventListener("change", async (event) => {
@@ -51,6 +60,8 @@ elements.dropzone.addEventListener("drop", async (event) => {
 });
 
 elements.consent.addEventListener("change", updateAnalyzeState);
+elements.modelConsent.addEventListener("change", updateAnalyzeState);
+elements.coachModel.addEventListener("change", updateModelControls);
 elements.transcript.addEventListener("input", () => {
   if (state.result) renderResult(state.result);
 });
@@ -95,7 +106,7 @@ async function loadFile(file) {
   }
 }
 
-function analyzeCurrentFile() {
+async function analyzeCurrentFile() {
   clearError();
   if (!state.audioBuffer) {
     setError("Choose an audio file first.");
@@ -103,6 +114,10 @@ function analyzeCurrentFile() {
   }
   if (!elements.consent.checked) {
     setError("Consent is required before browser-side audio processing.");
+    return;
+  }
+  if (elements.coachModel.value && !elements.modelConsent.checked) {
+    setError("Consent is required before sending derived assessment data to AI coaching.");
     return;
   }
 
@@ -120,6 +135,30 @@ function analyzeCurrentFile() {
     transcript: elements.transcript.value
   });
   renderResult(state.result);
+
+  if (elements.coachModel.value) await addAICoaching(state.result);
+}
+
+async function addAICoaching(result) {
+  const model = elements.coachModel.value;
+  elements.analyze.disabled = true;
+  elements.aiCoaching.hidden = false;
+  elements.aiCoachingTitle.textContent = `${COACH_MODELS[model].label} coaching`;
+  elements.aiCoachingSummary.textContent = "Generating coaching from your transcript and derived assessment...";
+  elements.aiCoachingPractice.replaceChildren();
+  try {
+    const coaching = await requestAICoaching(createCoachRequest({ model, transcript: elements.transcript.value, result }));
+    elements.aiCoachingSummary.textContent = coaching.summary;
+    for (const item of coaching.practice) {
+      const practice = document.createElement("li");
+      practice.textContent = item;
+      elements.aiCoachingPractice.append(practice);
+    }
+  } catch (error) {
+    elements.aiCoachingSummary.textContent = error.message;
+  } finally {
+    updateAnalyzeState();
+  }
 }
 
 function renderResult(result) {
@@ -266,7 +305,19 @@ function downmix(audioBuffer) {
 
 function updateAnalyzeState() {
   const durationValid = state.audioBuffer ? validateDuration(state.audioBuffer.duration).valid : false;
-  elements.analyze.disabled = !state.audioBuffer || !durationValid || !elements.consent.checked;
+  const modelReady = !elements.coachModel.value || elements.modelConsent.checked;
+  elements.analyze.disabled = !state.audioBuffer || !durationValid || !elements.consent.checked || !modelReady;
+}
+
+function updateModelControls() {
+  const model = elements.coachModel.value;
+  const selected = COACH_MODELS[model];
+  elements.modelConsentRow.hidden = !selected;
+  if (!selected) elements.modelConsent.checked = false;
+  elements.modelNotice.textContent = selected
+    ? `${selected.label} receives only your transcript and derived assessment through this deployment's configured AI endpoint. Audio is not sent.`
+    : "Browser-only analysis keeps the recording and feedback on this device.";
+  updateAnalyzeState();
 }
 
 function setMeter(bar, label, value) {
@@ -288,6 +339,9 @@ function reset() {
   elements.file.value = "";
   elements.transcript.value = "";
   elements.consent.checked = false;
+  elements.coachModel.value = "";
+  elements.modelConsent.checked = false;
+  updateModelControls();
   elements.durationBadge.textContent = "No file";
   elements.durationBadge.className = "badge muted";
   clearError();
@@ -306,6 +360,9 @@ function resetResultOnly() {
   setMeter(elements.paceBar, elements.paceScore, 0);
   elements.words.replaceChildren();
   elements.issues.replaceChildren();
+  elements.aiCoaching.hidden = true;
+  elements.aiCoachingSummary.textContent = "";
+  elements.aiCoachingPractice.replaceChildren();
   drawEmptyWaveform();
 }
 

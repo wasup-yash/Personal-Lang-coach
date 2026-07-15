@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { analyzePronunciation, tokenizeTranscript, validateDuration } from "../src/analyzer.js";
+import { COACH_MODELS, createCoachRequest } from "../src/ai-coach.js";
 
 const sampleRate = 16000;
 
@@ -22,6 +23,8 @@ assert.equal(validateDuration(14.9).valid, false);
 assert.equal(validateDuration(15).valid, true);
 assert.equal(validateDuration(45).valid, true);
 assert.equal(validateDuration(45.1).valid, false);
+assert.equal(COACH_MODELS.qwen3.fallback, "Qwen/Qwen3-4B");
+assert.equal(COACH_MODELS.gemma3.fallback, "google/gemma-3-4b-it");
 
 assert.deepEqual(
   tokenizeTranscript("Hello, world! It's me.").map((word) => word.normalized),
@@ -36,6 +39,11 @@ const clean = analyzePronunciation({
 });
 
 assert.equal(clean.durationCheck.valid, true);
+
+const coachRequest = createCoachRequest({ model: "qwen3", transcript: "A short English sample.", result: clean });
+assert.equal(coachRequest.model, "qwen3");
+assert.equal(coachRequest.assessment.overall, clean.overall);
+assert.throws(() => createCoachRequest({ model: "unknown", transcript: "", result: clean }));
 assert.ok(clean.overall >= 65, `expected usable score, got ${clean.overall}`);
 assert.equal(clean.words.length, 13);
 

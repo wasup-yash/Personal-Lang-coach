@@ -33,7 +33,7 @@ CONTENT = {
         "Vercel static hosting serves assets only; no audio API or object store is used by default.",
     ],
     "models": (
-        "The implementation uses the browser Web Audio API and deterministic acoustic heuristics, not an external STT, TTS, LLM, or phoneme API. This was chosen over Whisper, Deepgram, or cloud LLM judging because the assessment must be reachable without private API keys and because local processing materially reduces DPDP risk for voice data."
+        "The implementation uses the browser Web Audio API and deterministic acoustic heuristics for the core score. Optional coaching can use Qwen3 4B or Gemma 3 4B through a Vercel API route to an OpenAI-compatible inference endpoint. The route sends the transcript and derived scores/issues, never raw audio. This preserves a no-key browser experience for baseline feedback while allowing richer coaching when a server-side model endpoint is configured."
     ),
     "scoring": (
         "Audio is split into 30 ms frames with 15 ms hops. RMS energy estimates voicing and clarity; zero-crossing rate flags noisy consonant-like spans; pause gaps flag rhythm breaks. The overall score weights clarity 48%, rhythm 27%, pace 20%, and duration compliance 5%."
@@ -42,7 +42,7 @@ CONTENT = {
         "The app returns time-coded issues such as unclear segment, noisy articulation, uneven stress, long pause, or low speech density. If the learner supplies the expected transcript, issue time ranges are mapped onto words for word-level highlights; otherwise the same findings appear as segment-level coaching cards."
     ),
     "dpdp": (
-        "Voice recordings can identify a speaker and are treated as digital personal data. The app therefore uses data minimization by default: it does not upload, store, or log the audio. Processing happens only after an affirmative consent checkbox, and reset/page refresh clears the local object URL, decoded buffer, transcript, and analysis state."
+        "Voice recordings can identify a speaker and are treated as digital personal data. The app therefore uses data minimization by default: it does not upload, store, or log the audio. Processing happens only after an affirmative consent checkbox, and reset/page refresh clears the local object URL, decoded buffer, transcript, and analysis state. Optional model coaching requires separate consent before sending transcript and derived assessment data."
     ),
     "storage": (
         "No server-side audio storage exists in the default deployment. Retention is limited to browser memory for the active session; the specified purpose ends when feedback is shown or the user resets."

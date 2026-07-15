@@ -38,6 +38,21 @@
             <textarea id="transcript" rows="4" spellcheck="true" placeholder="Paste the passage the learner intended to read for word-level feedback."></textarea>
           </div>
 
+          <div class="field">
+            <label for="coach-model">AI coaching <span>optional</span></label>
+            <select id="coach-model">
+              <option value="">Browser-only analysis</option>
+              <option value="qwen3">Qwen3 4B</option>
+              <option value="gemma3">Gemma 3 4B</option>
+            </select>
+            <p class="field-note" id="model-notice">Browser-only analysis keeps the recording and feedback on this device.</p>
+          </div>
+
+          <label class="consent-row model-consent" id="model-consent-row" hidden>
+            <input id="model-consent" type="checkbox">
+            <span>I consent to sending my transcript and derived assessment data, but not my audio file, to the selected AI coaching provider.</span>
+          </label>
+
           <label class="consent-row">
             <input id="consent" type="checkbox">
             <span>I consent to this browser processing my audio for pronunciation feedback. The file is not uploaded by this app.</span>
@@ -83,6 +98,11 @@
 
           <div id="word-feedback" class="word-feedback" aria-live="polite"></div>
           <div id="issue-list" class="issue-list"></div>
+          <section id="ai-coaching" class="ai-coaching" hidden aria-live="polite">
+            <h3 id="ai-coaching-title">AI coaching</h3>
+            <p id="ai-coaching-summary"></p>
+            <ul id="ai-coaching-practice"></ul>
+          </section>
         </section>
       </section>
 
@@ -91,7 +111,7 @@
         <dl>
           <div>
             <dt>Storage</dt>
-            <dd>Audio stays in browser memory and is cleared on reset or refresh.</dd>
+            <dd>Audio stays in browser memory and is cleared on reset or refresh. AI coaching receives derived results and transcript only after separate consent.</dd>
           </div>
           <div>
             <dt>Retention</dt>
