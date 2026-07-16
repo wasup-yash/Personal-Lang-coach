@@ -1,0 +1,5 @@
+{
+  "source": "PLACEHOLDER - replace by running scripts/calibrate_english.py with human-rated L2-ARCTIC-derived data before production use.",
+  "x": [-8.0, -4.0, -2.0, 0.0, 2.0, 4.0],
+  "y": [15.0, 32.0, 50.0, 68.0, 84.0, 96.0]
+}

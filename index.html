@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="Pronunciation assessment for 15 to 45 second English audio uploads.">
+    <meta name="description" content="English and Hindi pronunciation assessment for 15 to 45 second audio uploads.">
     <title>Personal Lang Coach</title>
     <link rel="stylesheet" href="/src/styles.css">
   </head>
@@ -12,17 +12,24 @@
       <section class="workspace" aria-labelledby="app-title">
         <header class="topbar">
           <div>
-            <p class="eyebrow">English pronunciation assessment</p>
+            <p class="eyebrow">English and Hindi pronunciation assessment</p>
             <h1 id="app-title">Personal Lang Coach</h1>
           </div>
           <div class="status-pill" id="privacy-status">Local audio processing</div>
+          <div class="account-actions">
+            <span id="auth-state" class="auth-state">Checking account...</span>
+            <button id="auth-open" class="secondary compact" type="button">Sign in</button>
+            <button id="auth-sign-out" class="secondary compact" type="button" hidden>Sign out</button>
+            <button id="auth-export" class="icon-action" type="button" title="Export my data" hidden>Export</button>
+            <button id="auth-delete" class="icon-action danger" type="button" title="Delete my account" hidden>Delete</button>
+          </div>
         </header>
 
         <section class="panel input-panel" aria-labelledby="upload-title">
           <div class="section-head">
             <div>
               <h2 id="upload-title">Recording</h2>
-              <p>Upload one English speech file between 15 and 45 seconds.</p>
+              <p id="recording-copy">Upload one English or Hindi speech file between 15 and 45 seconds.</p>
             </div>
             <span id="duration-badge" class="badge muted">No file</span>
           </div>
@@ -34,8 +41,18 @@
           </label>
 
           <div class="field">
+            <label for="language">Practice language</label>
+            <select id="language">
+              <option value="english">English</option>
+              <option value="hindi">Hindi</option>
+            </select>
+            <p class="field-note" id="language-note">English scoring emphasizes steady vowels, clear final consonants, rhythm, and pace.</p>
+          </div>
+
+          <div class="field">
             <label for="transcript">Expected transcript <span>optional</span></label>
             <textarea id="transcript" rows="4" spellcheck="true" placeholder="Paste the passage the learner intended to read for word-level feedback."></textarea>
+            <p class="field-note" id="transcript-note">The transcript improves pace and word-level feedback; it is not used to transcribe the recording.</p>
           </div>
 
           <div class="field">
@@ -58,6 +75,12 @@
             <span>I consent to this browser processing my audio for pronunciation feedback. The file is not uploaded by this app.</span>
           </label>
 
+          <label class="consent-row detailed-consent">
+            <input id="detailed-feedback" type="checkbox" disabled>
+            <span>Get detailed phoneme feedback. This sends the recording directly to encrypted transient storage for ASR and forced alignment, then deletes it after processing.</span>
+          </label>
+          <p class="field-note" id="detailed-note">Sign in to enable detailed phoneme feedback. Browser-only scoring remains available without an account.</p>
+
           <div class="actions">
             <button id="analyze" class="primary" type="button" disabled>Analyze pronunciation</button>
             <button id="reset" class="secondary" type="button">Reset</button>
@@ -76,17 +99,17 @@
 
           <div class="meter-grid" aria-label="Component scores">
             <div class="meter">
-              <span>Clarity</span>
+              <span>Sound clarity</span>
               <div><i id="clarity-bar"></i></div>
               <strong id="clarity-score">--</strong>
             </div>
             <div class="meter">
-              <span>Rhythm</span>
+              <span>Fluency</span>
               <div><i id="rhythm-bar"></i></div>
               <strong id="rhythm-score">--</strong>
             </div>
             <div class="meter">
-              <span>Pace</span>
+              <span>Speaking pace</span>
               <div><i id="pace-bar"></i></div>
               <strong id="pace-score">--</strong>
             </div>
@@ -103,6 +126,16 @@
             <p id="ai-coaching-summary"></p>
             <ul id="ai-coaching-practice"></ul>
           </section>
+          <section id="phoneme-feedback" class="phoneme-feedback" hidden aria-live="polite">
+            <div class="section-head compact-head">
+              <div>
+                <h3>Detailed phoneme feedback</h3>
+                <p id="phoneme-note"></p>
+              </div>
+              <span id="alignment-badge" class="badge muted"></span>
+            </div>
+            <div id="phoneme-list" class="phoneme-list"></div>
+          </section>
         </section>
       </section>
 
@@ -111,7 +144,7 @@
         <dl>
           <div>
             <dt>Storage</dt>
-            <dd>Audio stays in browser memory and is cleared on reset or refresh. AI coaching receives derived results and transcript only after separate consent.</dd>
+            <dd>Browser-only audio stays in memory. Detailed feedback uses encrypted transient storage only after separate consent and deletes the object after processing.</dd>
           </div>
           <div>
             <dt>Retention</dt>
@@ -123,11 +156,26 @@
           </div>
           <div>
             <dt>Scope</dt>
-            <dd>English speech only. Files outside 15-45 seconds are rejected.</dd>
+            <dd>English and Hindi speech. Files outside 15-45 seconds are rejected.</dd>
           </div>
         </dl>
       </aside>
     </main>
+
+    <dialog id="auth-dialog" class="auth-dialog">
+      <form id="auth-form" method="dialog">
+        <div class="dialog-head"><h2>Account</h2><button id="auth-close" class="icon-action" type="button" title="Close">Close</button></div>
+        <label for="auth-email">Email</label>
+        <input id="auth-email" type="email" autocomplete="email" required>
+        <label for="auth-password">Password</label>
+        <input id="auth-password" type="password" autocomplete="current-password" minlength="8" required>
+        <p id="auth-message" class="field-note"></p>
+        <div class="actions">
+          <button class="primary" type="submit" value="sign-in">Sign in</button>
+          <button class="secondary" type="submit" value="sign-up">Create account</button>
+        </div>
+      </form>
+    </dialog>
 
     <script type="module" src="/src/app.js"></script>
   </body>

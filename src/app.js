@@ -1,21 +1,32 @@
-import { analyzePronunciation, validateDuration } from "./analyzer.js";
+import { validateDuration } from "./analyzer.js";
+import { analyzeLocalRecording, downmixAudio } from "./assessment-controller.js";
 import { COACH_MODELS, createCoachRequest, requestAICoaching } from "./ai-coach.js";
+import { getLanguage, getTranscriptLanguageWarning } from "./language.js";
+import { initializeAuth } from "./auth.js";
+import { requestDetailedFeedback } from "./detailed-feedback.js";
+import { initializeFrontendMonitoring } from "./monitoring.js";
 
 const state = {
   file: null,
   audioBuffer: null,
   objectUrl: null,
-  result: null
+  result: null,
+  user: null
 };
 
 const elements = {
   file: document.querySelector("#audio-file"),
   dropzone: document.querySelector("#dropzone"),
   transcript: document.querySelector("#transcript"),
+  language: document.querySelector("#language"),
+  languageNote: document.querySelector("#language-note"),
+  transcriptNote: document.querySelector("#transcript-note"),
   coachModel: document.querySelector("#coach-model"),
   modelConsent: document.querySelector("#model-consent"),
   modelConsentRow: document.querySelector("#model-consent-row"),
   modelNotice: document.querySelector("#model-notice"),
+  detailedFeedback: document.querySelector("#detailed-feedback"),
+  detailedNote: document.querySelector("#detailed-note"),
   consent: document.querySelector("#consent"),
   analyze: document.querySelector("#analyze"),
   reset: document.querySelector("#reset"),
@@ -35,7 +46,11 @@ const elements = {
   aiCoaching: document.querySelector("#ai-coaching"),
   aiCoachingTitle: document.querySelector("#ai-coaching-title"),
   aiCoachingSummary: document.querySelector("#ai-coaching-summary"),
-  aiCoachingPractice: document.querySelector("#ai-coaching-practice")
+  aiCoachingPractice: document.querySelector("#ai-coaching-practice"),
+  phonemeFeedback: document.querySelector("#phoneme-feedback"),
+  phonemeNote: document.querySelector("#phoneme-note"),
+  alignmentBadge: document.querySelector("#alignment-badge"),
+  phonemeList: document.querySelector("#phoneme-list")
 };
 
 elements.file.addEventListener("change", async (event) => {
@@ -62,13 +77,22 @@ elements.dropzone.addEventListener("drop", async (event) => {
 elements.consent.addEventListener("change", updateAnalyzeState);
 elements.modelConsent.addEventListener("change", updateAnalyzeState);
 elements.coachModel.addEventListener("change", updateModelControls);
+elements.detailedFeedback.addEventListener("change", updateDetailedFeedbackState);
+elements.language.addEventListener("change", updateLanguageControls);
 elements.transcript.addEventListener("input", () => {
+  updateTranscriptNote();
   if (state.result) renderResult(state.result);
 });
 elements.analyze.addEventListener("click", analyzeCurrentFile);
 elements.reset.addEventListener("click", reset);
 
 drawEmptyWaveform();
+updateLanguageControls();
+initializeFrontendMonitoring();
+initializeAuth((user) => {
+  state.user = user;
+  updateDetailedFeedbackState();
+});
 
 async function loadFile(file) {
   clearError();
@@ -127,16 +151,38 @@ async function analyzeCurrentFile() {
     return;
   }
 
-  const merged = downmix(state.audioBuffer);
-  state.result = analyzePronunciation({
-    channelData: merged,
-    sampleRate: state.audioBuffer.sampleRate,
-    duration: state.audioBuffer.duration,
-    transcript: elements.transcript.value
+  state.result = analyzeLocalRecording({
+    audioBuffer: state.audioBuffer,
+    transcript: elements.transcript.value,
+    language: elements.language.value
   });
   renderResult(state.result);
 
   if (elements.coachModel.value) await addAICoaching(state.result);
+  if (elements.detailedFeedback.checked) await addDetailedFeedback();
+}
+
+async function addDetailedFeedback() {
+  elements.analyze.disabled = true;
+  elements.phonemeFeedback.hidden = false;
+  elements.phonemeNote.textContent = "Uploading directly to transient encrypted storage and running ASR alignment...";
+  elements.phonemeList.replaceChildren();
+  elements.alignmentBadge.textContent = "Processing";
+  elements.alignmentBadge.className = "badge muted";
+  try {
+    const detailed = await requestDetailedFeedback({
+      file: state.file,
+      transcript: elements.transcript.value,
+      language: elements.language.value === "hindi" ? "hi" : "en"
+    });
+    renderPhonemeFeedback(detailed);
+  } catch (error) {
+    elements.phonemeNote.textContent = error.message;
+    elements.alignmentBadge.textContent = "Unavailable";
+    elements.alignmentBadge.className = "badge bad";
+  } finally {
+    updateAnalyzeState();
+  }
 }
 
 async function addAICoaching(result) {
@@ -147,7 +193,7 @@ async function addAICoaching(result) {
   elements.aiCoachingSummary.textContent = "Generating coaching from your transcript and derived assessment...";
   elements.aiCoachingPractice.replaceChildren();
   try {
-    const coaching = await requestAICoaching(createCoachRequest({ model, transcript: elements.transcript.value, result }));
+    const coaching = await requestAICoaching(createCoachRequest({ model, transcript: elements.transcript.value, language: elements.language.value, result }));
     elements.aiCoachingSummary.textContent = coaching.summary;
     for (const item of coaching.practice) {
       const practice = document.createElement("li");
@@ -199,7 +245,10 @@ function renderIssues(result) {
   if (result.issues.length === 0) {
     const item = document.createElement("article");
     item.className = "issue-card";
-    item.innerHTML = "<h3>No major pronunciation issues detected</h3><p>Keep practicing consistent stress and clear final consonants.</p>";
+    const advice = result.language === "hindi"
+      ? "Keep practicing clear matras, vowels, and consonant separation."
+      : "Keep practicing consistent stress and clear final consonants.";
+    item.innerHTML = `<h3>No major pronunciation issues detected</h3><p>${advice}</p>`;
     elements.issues.append(item);
     return;
   }
@@ -219,10 +268,32 @@ function renderIssues(result) {
 
     const action = document.createElement("p");
     action.className = "coach";
-    action.textContent = coachingAction(issue.type);
+    action.textContent = coachingAction(issue.type, state.result?.language || elements.language.value);
 
     card.append(title, detail, action);
     elements.issues.append(card);
+  }
+}
+
+function renderPhonemeFeedback(detailed) {
+  elements.phonemeNote.textContent = detailed.calibration_note;
+  elements.alignmentBadge.textContent = detailed.alignment_source === "whisperx" ? "Forced aligned" : "Estimated timing";
+  elements.alignmentBadge.className = detailed.alignment_source === "whisperx" ? "badge good" : "badge muted";
+  elements.phonemeList.replaceChildren();
+  if (!detailed.phonemes?.length) {
+    const note = document.createElement("p");
+    note.className = "empty-note";
+    note.textContent = "No phoneme scores were returned. Add an expected transcript and try again.";
+    elements.phonemeList.append(note);
+    return;
+  }
+  for (const phoneme of detailed.phonemes) {
+    const item = document.createElement("article");
+    item.className = "phoneme-item";
+    const score = phoneme.calibrated ? `${phoneme.calibrated_score}/100` : `GOP ${phoneme.gop_score}`;
+    item.textContent = `${phoneme.phoneme} ${formatTime(phoneme.start)}-${formatTime(phoneme.end)} ${score}`;
+    if (phoneme.calibrated && phoneme.calibrated_score < 55) item.classList.add("needs-work");
+    elements.phonemeList.append(item);
   }
 }
 
@@ -236,7 +307,7 @@ function drawWaveform(audioBuffer, issues) {
   const context = canvas.getContext("2d");
   const width = canvas.width;
   const height = canvas.height;
-  const data = downmix(audioBuffer);
+  const data = downmixAudio(audioBuffer);
   const step = Math.max(1, Math.floor(data.length / width));
   const middle = height * 0.52;
 
@@ -292,21 +363,19 @@ function drawEmptyWaveform() {
   }
 }
 
-function downmix(audioBuffer) {
-  const output = new Float32Array(audioBuffer.length);
-  for (let channel = 0; channel < audioBuffer.numberOfChannels; channel += 1) {
-    const data = audioBuffer.getChannelData(channel);
-    for (let i = 0; i < data.length; i += 1) {
-      output[i] += data[i] / audioBuffer.numberOfChannels;
-    }
-  }
-  return output;
-}
-
 function updateAnalyzeState() {
   const durationValid = state.audioBuffer ? validateDuration(state.audioBuffer.duration).valid : false;
   const modelReady = !elements.coachModel.value || elements.modelConsent.checked;
   elements.analyze.disabled = !state.audioBuffer || !durationValid || !elements.consent.checked || !modelReady;
+}
+
+function updateDetailedFeedbackState() {
+  const signedIn = Boolean(state.user);
+  elements.detailedFeedback.disabled = !signedIn;
+  if (!signedIn) elements.detailedFeedback.checked = false;
+  elements.detailedNote.textContent = signedIn
+    ? "Detailed feedback uploads directly to transient encrypted storage, then the ASR service explicitly deletes it after processing."
+    : "Sign in to enable detailed phoneme feedback. Browser-only scoring remains available without an account.";
 }
 
 function updateModelControls() {
@@ -318,6 +387,22 @@ function updateModelControls() {
     ? `${selected.label} receives only your transcript and derived assessment through this deployment's configured AI endpoint. Audio is not sent.`
     : "Browser-only analysis keeps the recording and feedback on this device.";
   updateAnalyzeState();
+}
+
+function updateLanguageControls() {
+  const language = getLanguage(elements.language.value);
+  const isHindi = elements.language.value === "hindi";
+  elements.transcript.placeholder = language.transcriptPlaceholder;
+  elements.languageNote.textContent = isHindi
+    ? "Hindi scoring emphasizes clear vowels and matras, consonant separation, rhythm, and pace."
+    : "English scoring emphasizes steady vowels, clear final consonants, rhythm, and pace.";
+  updateTranscriptNote();
+  if (state.result) resetResultOnly();
+}
+
+function updateTranscriptNote() {
+  const warning = getTranscriptLanguageWarning(elements.transcript.value, elements.language.value);
+  elements.transcriptNote.textContent = warning || "The transcript improves pace and word-level feedback; it is not used to transcribe the recording.";
 }
 
 function setMeter(bar, label, value) {
@@ -338,10 +423,13 @@ function reset() {
   state.audioBuffer = null;
   elements.file.value = "";
   elements.transcript.value = "";
+  elements.language.value = "english";
   elements.consent.checked = false;
   elements.coachModel.value = "";
   elements.modelConsent.checked = false;
+  elements.detailedFeedback.checked = false;
   updateModelControls();
+  updateLanguageControls();
   elements.durationBadge.textContent = "No file";
   elements.durationBadge.className = "badge muted";
   clearError();
@@ -363,6 +451,9 @@ function resetResultOnly() {
   elements.aiCoaching.hidden = true;
   elements.aiCoachingSummary.textContent = "";
   elements.aiCoachingPractice.replaceChildren();
+  elements.phonemeFeedback.hidden = true;
+  elements.phonemeNote.textContent = "";
+  elements.phonemeList.replaceChildren();
   drawEmptyWaveform();
 }
 
@@ -383,10 +474,11 @@ function titleCase(value) {
   return value.replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-function coachingAction(type) {
+function coachingAction(type, language) {
+  const tips = getLanguage(language).tips;
   if (type === "long pause") return "Practice the phrase in one breath, then add a shorter intentional pause.";
-  if (type === "noisy articulation") return "Repeat the line slowly and over-articulate consonants before returning to normal speed.";
-  if (type === "uneven stress") return "Mark the stressed syllable in the phrase and keep the vowel length steady.";
+  if (type === "noisy articulation") return tips.noisy;
+  if (type === "uneven stress") return tips.stress;
   if (type === "low speech density") return "Use a shorter sentence plan and reduce silent planning time.";
-  return "Replay this span and aim for a louder, more stable vowel and a clean final consonant.";
+  return tips.unclear;
 }

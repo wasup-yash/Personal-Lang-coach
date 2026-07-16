@@ -1,0 +1,9 @@
+[
+  {
+    "AllowedHeaders": ["content-type", "x-amz-server-side-encryption"],
+    "AllowedMethods": ["POST"],
+    "AllowedOrigins": ["https://YOUR_VERCEL_DOMAIN"],
+    "ExposeHeaders": [],
+    "MaxAgeSeconds": 300
+  }
+]

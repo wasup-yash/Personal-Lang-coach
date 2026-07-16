@@ -1,4 +1,5 @@
 import { COACH_MODELS } from "../src/ai-coach.js";
+import { getLanguage, LANGUAGES } from "../src/language.js";
 
 const MAX_TRANSCRIPT_CHARS = 2_500;
 const MAX_ISSUES = 5;
@@ -9,8 +10,8 @@ export default async function handler(request, response) {
     return response.status(405).json({ error: "Method not allowed." });
   }
 
-  const { model, transcript = "", assessment } = request.body || {};
-  if (!COACH_MODELS[model] || !assessment || !Number.isFinite(assessment.overall)) {
+  const { model, language = "english", transcript = "", assessment } = request.body || {};
+  if (!COACH_MODELS[model] || !LANGUAGES[language] || !assessment || !Number.isFinite(assessment.overall)) {
     return response.status(400).json({ error: "Invalid coaching request." });
   }
 
@@ -27,6 +28,7 @@ export default async function handler(request, response) {
     summary: String(assessment.summary || "").slice(0, 500),
     issues: Array.isArray(assessment.issues) ? assessment.issues.slice(0, MAX_ISSUES) : []
   };
+  const languageLabel = getLanguage(language).label;
 
   try {
     const upstream = await fetch(`${baseUrl}/chat/completions`, {
@@ -43,11 +45,11 @@ export default async function handler(request, response) {
         messages: [
           {
             role: "system",
-            content: "You are an English pronunciation coach. Use only the provided derived acoustic assessment and optional expected transcript. Do not claim you heard the audio, diagnose a condition, invent errors, or mention model/provider details. Return strict JSON: {\"summary\": string, \"practice\": [string, string, string]}. Keep each practice item concrete and under 24 words."
+            content: `You are a ${languageLabel} pronunciation coach. Use only the provided derived acoustic assessment and optional expected transcript. Do not claim you heard the audio, diagnose a condition, invent errors, or mention model/provider details. Give feedback in ${languageLabel}; Hindi feedback may use Devanagari. Return strict JSON: {\"summary\": string, \"practice\": [string, string, string]}. Keep each practice item concrete and under 24 words.`
           },
           {
             role: "user",
-            content: JSON.stringify({ transcript: String(transcript).slice(0, MAX_TRANSCRIPT_CHARS), assessment: safeAssessment })
+            content: JSON.stringify({ language: languageLabel, transcript: String(transcript).slice(0, MAX_TRANSCRIPT_CHARS), assessment: safeAssessment })
           }
         ]
       })

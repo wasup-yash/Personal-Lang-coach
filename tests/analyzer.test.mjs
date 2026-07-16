@@ -30,6 +30,10 @@ assert.deepEqual(
   tokenizeTranscript("Hello, world! It's me.").map((word) => word.normalized),
   ["hello", "world", "it's", "me"]
 );
+assert.deepEqual(
+  tokenizeTranscript("नमस्ते दुनिया, यह हिंदी अभ्यास है।", "hindi").map((word) => word.normalized),
+  ["नमस्ते", "दुनिया", "यह", "हिंदी", "अभ्यास", "है"]
+);
 
 const clean = analyzePronunciation({
   channelData: syntheticSpeech(35),
@@ -46,6 +50,17 @@ assert.equal(coachRequest.assessment.overall, clean.overall);
 assert.throws(() => createCoachRequest({ model: "unknown", transcript: "", result: clean }));
 assert.ok(clean.overall >= 65, `expected usable score, got ${clean.overall}`);
 assert.equal(clean.words.length, 13);
+
+const hindi = analyzePronunciation({
+  channelData: syntheticSpeech(35),
+  sampleRate,
+  duration: 35,
+  language: "hindi",
+  transcript: "नमस्ते दुनिया यह हिंदी उच्चारण अभ्यास है"
+});
+assert.equal(hindi.language, "hindi");
+assert.equal(hindi.languageLabel, "Hindi");
+assert.equal(hindi.words.length, 7);
 
 const paused = analyzePronunciation({
   channelData: syntheticSpeech(35, { pauses: [[8, 10.2], [22, 24.4]] }),

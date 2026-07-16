@@ -1,36 +1,21 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { createReadStream, mkdirSync, existsSync, statSync } from "node:fs";
-import { extname, join, normalize } from "node:path";
+import { spawn } from "node:child_process";
+import { mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { chromium } = require("playwright");
 
 const root = process.cwd();
-const types = {
-  ".html": "text/html; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".json": "application/json; charset=utf-8"
-};
-
-const server = createServer((request, response) => {
-  const url = new URL(request.url || "/", "http://127.0.0.1");
-  const requested = normalize(decodeURIComponent(url.pathname)).replace(/^(\.\.[/\\])+/, "");
-  let filePath = join(root, requested === "/" ? "index.html" : requested);
-
-  if (!filePath.startsWith(root) || !existsSync(filePath) || statSync(filePath).isDirectory()) {
-    filePath = join(root, "index.html");
-  }
-
-  response.writeHead(200, { "Content-Type": types[extname(filePath)] || "application/octet-stream" });
-  createReadStream(filePath).pipe(response);
-});
-
-await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-const { port } = server.address();
+const port = await freePort();
 const url = `http://127.0.0.1:${port}`;
+const app = spawn(process.execPath, ["scripts/serve.mjs"], {
+  cwd: root,
+  env: { ...process.env, PORT: String(port) },
+  stdio: "ignore"
+});
+await waitForServer(url);
 mkdirSync("tmp", { recursive: true });
 
 const launchOptions = { headless: true };
@@ -43,6 +28,11 @@ try {
   await page.goto(url);
   await expectText(page, "Personal Lang Coach");
   assert.equal(await page.locator("#analyze").isEnabled(), false);
+  assert.equal(await page.locator("#model-consent-row").isVisible(), false);
+  assert.equal(await page.locator("#detailed-feedback").isDisabled(), true);
+  await page.locator("#language").selectOption("hindi");
+  assert.match(await page.locator("#transcript").getAttribute("placeholder"), /हिंदी/);
+  await page.locator("#language").selectOption("english");
 
   await page.locator("#audio-file").setInputFiles({
     name: "assessment-sample.wav",
@@ -64,11 +54,30 @@ try {
   console.log(`E2E passed at ${url} with score ${score}.`);
 } finally {
   await browser.close();
-  await new Promise((resolve) => server.close(resolve));
+  app.kill();
 }
 
 async function expectText(page, text) {
   await page.waitForFunction((value) => document.body.textContent.includes(value), text);
+}
+
+async function freePort() {
+  const server = createServer();
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+  await new Promise((resolve) => server.close(resolve));
+  return port;
+}
+
+async function waitForServer(baseUrl) {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    try {
+      const response = await fetch(baseUrl);
+      if (response.ok) return;
+    } catch {}
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error("Development server did not start.");
 }
 
 function makeWav(durationSeconds) {

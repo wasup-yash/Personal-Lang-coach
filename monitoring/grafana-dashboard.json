@@ -1,0 +1,10 @@
+{
+  "title": "Personal Lang Coach ASR Pipeline",
+  "timezone": "browser",
+  "panels": [
+    { "title": "ASR request rate", "type": "timeseries", "targets": [{ "expr": "sum(rate(pronunciation_asr_requests_total[5m])) by (language,status)" }] },
+    { "title": "p95 stage latency", "type": "timeseries", "targets": [{ "expr": "histogram_quantile(0.95, sum(rate(pronunciation_pipeline_stage_seconds_bucket[5m])) by (le,stage))" }] },
+    { "title": "Queue depth", "type": "stat", "targets": [{ "expr": "pronunciation_queue_depth" }] },
+    { "title": "Estimated GPU cost", "type": "stat", "targets": [{ "expr": "pronunciation_gpu_cost_usd_total" }] }
+  ]
+}

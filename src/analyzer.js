@@ -12,7 +12,7 @@ export function validateDuration(duration) {
   };
 }
 
-export function analyzePronunciation({ channelData, sampleRate, duration, transcript = "" }) {
+export function analyzePronunciation({ channelData, sampleRate, duration, transcript = "", language = "english" }) {
   if (!channelData || !sampleRate || !duration) {
     throw new Error("Audio data, sample rate, and duration are required.");
   }
@@ -24,7 +24,8 @@ export function analyzePronunciation({ channelData, sampleRate, duration, transc
   const voicedSegments = mergeSegments(framesToSegments(voicedFrames), 0.18);
   const pauses = detectLongPauses(voicedSegments, duration);
   const voicedDuration = voicedSegments.reduce((sum, segment) => sum + segment.end - segment.start, 0);
-  const issues = detectIssues(voicedSegments, pauses, duration, voicedDuration);
+  const languageConfig = getLanguage(language);
+  const issues = detectIssues(voicedSegments, pauses, duration, voicedDuration, languageConfig);
   const componentScores = scoreComponents({
     duration,
     durationCheck,
@@ -32,7 +33,8 @@ export function analyzePronunciation({ channelData, sampleRate, duration, transc
     voicedSegments,
     pauses,
     issues,
-    transcript
+    transcript,
+    language
   });
   const overall = clamp(Math.round(
     componentScores.clarity * 0.48 +
@@ -43,6 +45,8 @@ export function analyzePronunciation({ channelData, sampleRate, duration, transc
 
   return {
     duration,
+    language,
+    languageLabel: languageConfig.label,
     durationCheck,
     frames: voicedFrames,
     threshold,
@@ -50,20 +54,13 @@ export function analyzePronunciation({ channelData, sampleRate, duration, transc
     issues: rankIssues(issues, duration),
     componentScores,
     overall,
-    words: buildWordHighlights(transcript, voicedSegments, issues, duration),
-    summary: summarize(overall, issues, transcript)
+    words: buildWordHighlights(transcript, voicedSegments, issues, duration, language),
+    summary: summarize(overall, issues, transcript, language)
   };
 }
 
-export function tokenizeTranscript(transcript) {
-  return transcript
-    .trim()
-    .split(/\s+/)
-    .map((raw) => ({
-      raw,
-      normalized: raw.toLowerCase().replace(/^[^a-z']+|[^a-z']+$/g, "")
-    }))
-    .filter((word) => word.normalized.length > 0);
+export function tokenizeTranscript(transcript, language = "english") {
+  return tokenizeForLanguage(transcript, language);
 }
 
 function frameSignal(data, sampleRate) {
@@ -143,26 +140,36 @@ function mergeSegments(segments, maxGap) {
     const previous = merged.at(-1);
     if (previous && segment.start - previous.end <= maxGap) {
       previous.end = segment.end;
-      previous.frames.push(...segment.frames);
-      Object.assign(previous, finalizeSegment(previous));
+      previous.frameCount += segment.frameCount;
+      previous.sumRms += segment.sumRms;
+      previous.sumRmsSquares += segment.sumRmsSquares;
+      previous.sumZcr += segment.sumZcr;
+      refreshSegmentStats(previous);
     } else {
-      merged.push({ ...segment, frames: [...segment.frames] });
+      merged.push({ ...segment });
     }
   }
   return merged;
 }
 
 function finalizeSegment(segment) {
-  const rmsValues = segment.frames.map((frame) => frame.rms);
-  const zcrValues = segment.frames.map((frame) => frame.zcr);
-  const avgRms = average(rmsValues);
-  const variability = standardDeviation(rmsValues) / Math.max(avgRms, 0.001);
-  return {
-    ...segment,
-    avgRms,
-    avgZcr: average(zcrValues),
-    variability
+  const stats = {
+    start: segment.start,
+    end: segment.end,
+    frameCount: segment.frames.length,
+    sumRms: segment.frames.reduce((sum, frame) => sum + frame.rms, 0),
+    sumRmsSquares: segment.frames.reduce((sum, frame) => sum + frame.rms ** 2, 0),
+    sumZcr: segment.frames.reduce((sum, frame) => sum + frame.zcr, 0)
   };
+  return refreshSegmentStats(stats);
+}
+
+function refreshSegmentStats(segment) {
+  segment.avgRms = segment.sumRms / Math.max(segment.frameCount, 1);
+  segment.avgZcr = segment.sumZcr / Math.max(segment.frameCount, 1);
+  const variance = Math.max(0, segment.sumRmsSquares / Math.max(segment.frameCount, 1) - segment.avgRms ** 2);
+  segment.variability = Math.sqrt(variance) / Math.max(segment.avgRms, 0.001);
+  return segment;
 }
 
 function detectLongPauses(segments, duration) {
@@ -183,7 +190,7 @@ function detectLongPauses(segments, duration) {
   return pauses;
 }
 
-function detectIssues(segments, pauses, duration, voicedDuration) {
+function detectIssues(segments, pauses, duration, voicedDuration, language) {
   const issues = [];
   const rmsSorted = segments.map((segment) => segment.avgRms).sort((a, b) => a - b);
   const medianRms = percentile(rmsSorted, 0.5) || 0.01;
@@ -200,7 +207,7 @@ function detectIssues(segments, pauses, duration, voicedDuration) {
         end: segment.end,
         severity: lowEnergy ? 0.68 : noisy ? 0.55 : 0.48,
         detail: lowEnergy
-          ? "Low speech energy made this part harder to understand."
+          ? `Low speech energy made this ${language.label} phrase harder to understand.`
           : noisy
             ? "High fricative/noise content may indicate unclear consonants or background noise."
             : "Energy changed abruptly, which can sound like broken stress or hesitation."
@@ -232,20 +239,21 @@ function detectIssues(segments, pauses, duration, voicedDuration) {
   return issues;
 }
 
-function scoreComponents({ duration, durationCheck, voicedDuration, voicedSegments, pauses, issues, transcript }) {
+function scoreComponents({ duration, durationCheck, voicedDuration, voicedSegments, pauses, issues, transcript, language }) {
   const pauseSeconds = pauses.reduce((sum, pause) => sum + pause.duration, 0);
   const issuePenalty = issues.reduce((sum, issue) => sum + issue.severity * 9, 0);
   const clarity = clamp(96 - issuePenalty - Math.max(0, pauses.length - 1) * 4, 35, 99);
   const rhythm = clamp(94 - pauseSeconds * 6 - Math.abs((voicedDuration / duration) - 0.58) * 85, 30, 98);
 
-  const wordCount = tokenizeTranscript(transcript).length;
+  const wordCount = tokenizeTranscript(transcript, language).length;
   let pace = 82;
   if (wordCount >= 5 && voicedDuration > 0) {
     const wordsPerMinute = wordCount / (voicedDuration / 60);
-    const distance = wordsPerMinute < 120
-      ? 120 - wordsPerMinute
-      : wordsPerMinute > 175
-        ? wordsPerMinute - 175
+    const [minPace, maxPace] = getLanguage(language).targetPace;
+    const distance = wordsPerMinute < minPace
+      ? minPace - wordsPerMinute
+      : wordsPerMinute > maxPace
+        ? wordsPerMinute - maxPace
         : 0;
     pace = clamp(96 - distance * 0.55, 30, 99);
   } else {
@@ -265,8 +273,8 @@ function scoreComponents({ duration, durationCheck, voicedDuration, voicedSegmen
   };
 }
 
-function buildWordHighlights(transcript, segments, issues, duration) {
-  const words = tokenizeTranscript(transcript);
+function buildWordHighlights(transcript, segments, issues, duration, language) {
+  const words = tokenizeTranscript(transcript, language);
   if (words.length === 0) return [];
 
   const activeStart = segments[0]?.start ?? 0;
@@ -294,15 +302,16 @@ function rankIssues(issues, duration) {
     .sort((a, b) => a.start - b.start);
 }
 
-function summarize(score, issues, transcript) {
-  const mode = tokenizeTranscript(transcript).length ? "word-level" : "segment-level";
+function summarize(score, issues, transcript, language) {
+  const mode = tokenizeTranscript(transcript, language).length ? "word-level" : "segment-level";
+  const languageLabel = getLanguage(language).label;
   if (score >= 85 && issues.length <= 2) {
-    return `Strong ${mode} result with only minor watch points.`;
+    return `Strong ${languageLabel} ${mode} result with only minor watch points.`;
   }
   if (score >= 70) {
-    return `Usable ${mode} result; focus on the highlighted clarity and rhythm issues.`;
+    return `Usable ${languageLabel} ${mode} result; focus on the highlighted clarity and rhythm issues.`;
   }
-  return `Needs practice; the highlighted ${mode} issues are likely to affect listener understanding.`;
+  return `Needs practice; the highlighted ${languageLabel} ${mode} issues are likely to affect listener understanding.`;
 }
 
 function rangesOverlap(aStart, aEnd, bStart, bEnd) {
@@ -323,13 +332,7 @@ function average(values) {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
-function standardDeviation(values) {
-  if (values.length <= 1) return 0;
-  const mean = average(values);
-  const variance = average(values.map((value) => (value - mean) ** 2));
-  return Math.sqrt(variance);
-}
-
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
+import { getLanguage, tokenizeForLanguage } from "./language.js";

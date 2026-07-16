@@ -11,11 +11,12 @@ export const COACH_MODELS = {
   }
 };
 
-export function createCoachRequest({ model, transcript, result }) {
+export function createCoachRequest({ model, transcript, language, result }) {
   if (!COACH_MODELS[model]) throw new Error("Choose a supported coaching model.");
 
   return {
     model,
+    language,
     transcript: transcript.trim(),
     assessment: {
       overall: result.overall,
