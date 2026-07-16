@@ -35,9 +35,3 @@ GEMMA3_MODEL=google/gemma-3-4b-it
 ```
 
 `QWEN3_MODEL` and `GEMMA3_MODEL` are optional overrides. The displayed model is only available when its configured endpoint exposes that model. Without `LLM_BASE_URL` and `LLM_API_KEY`, browser-only scoring continues to work and AI coaching reports that it is unconfigured.
-
-## Test
-
-```bash
-npm test
-```
